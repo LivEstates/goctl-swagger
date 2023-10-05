@@ -259,18 +259,26 @@ func renderServiceRoutes(service spec.Service, groups []spec.Group, paths swagge
 			}
 
 			desc := "A successful response."
-			respSchema := schemaCore{}
-			// respRef := swaggerSchemaObject{}
+			var respProp swaggerSchemaObjectProperties
+			respProp = append(respProp, keyVal{Key: "code", Value: swaggerSchemaObject{
+				schemaCore: schemaCore{Type: "integer", Format: "int64"}}})
+			respProp = append(respProp, keyVal{Key: "msg", Value: swaggerSchemaObject{
+				schemaCore: schemaCore{Type: "string"}}})
 			if route.ResponseType != nil && len(route.ResponseType.Name()) > 0 {
 				if strings.HasPrefix(route.ResponseType.Name(), "[]") {
 
 					refTypeName := strings.Replace(route.ResponseType.Name(), "[", "", 1)
 					refTypeName = strings.Replace(refTypeName, "]", "", 1)
-
-					respSchema.Type = "array"
-					respSchema.Items = &swaggerItemsObject{Ref: fmt.Sprintf("#/definitions/%s", refTypeName)}
+					respProp = append(respProp, keyVal{Key: "data", Value: swaggerSchemaObject{
+						schemaCore: schemaCore{
+							Type:  "array",
+							Items: &swaggerItemsObject{Ref: fmt.Sprintf("#/definitions/%s", refTypeName)}},
+					}})
 				} else {
-					respSchema.Ref = fmt.Sprintf("#/definitions/%s", route.ResponseType.Name())
+					respProp = append(respProp, keyVal{Key: "data", Value: swaggerSchemaObject{
+						schemaCore: schemaCore{
+							Ref: fmt.Sprintf("#/definitions/%s", route.ResponseType.Name())},
+					}})
 				}
 			}
 			tags := service.Name
@@ -289,7 +297,8 @@ func renderServiceRoutes(service spec.Service, groups []spec.Group, paths swagge
 					"200": swaggerResponseObject{
 						Description: desc,
 						Schema: swaggerSchemaObject{
-							schemaCore: respSchema,
+							schemaCore: schemaCore{Type: "object"},
+							Properties: &respProp,
 						},
 					},
 				},
