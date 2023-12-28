@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -18,6 +19,7 @@ import (
 var strColon = []byte(":")
 
 const (
+	validateKey     = "validate"
 	defaultOption   = "default"
 	stringOption    = "string"
 	optionalOption  = "optional"
@@ -53,7 +55,7 @@ func parseRangeOption(option string) (float64, float64, bool) {
 	return min, max, true
 }
 
-func applyGenerate(p *plugin.Plugin, host string, basePath string) (*swaggerObject, error) {
+func applyGenerate(p *plugin.Plugin, host string, basePath string, schemes string) (*swaggerObject, error) {
 	title, _ := strconv.Unquote(p.Api.Info.Properties["title"])
 	version, _ := strconv.Unquote(p.Api.Info.Properties["version"])
 	desc, _ := strconv.Unquote(p.Api.Info.Properties["desc"])
@@ -79,6 +81,19 @@ func applyGenerate(p *plugin.Plugin, host string, basePath string) (*swaggerObje
 		s.BasePath = basePath
 	}
 
+	if len(schemes) > 0 {
+		supportedSchemes := []string{"http", "https", "ws", "wss"}
+		ss := strings.Split(schemes, ",")
+		for i := range ss {
+			scheme := ss[i]
+			scheme = strings.TrimSpace(scheme)
+			if !contains(supportedSchemes, scheme) {
+				log.Fatalf("unsupport scheme: [%s], only support [http, https, ws, wss]", scheme)
+			}
+			ss[i] = scheme
+		}
+		s.Schemes = ss
+	}
 	s.SecurityDefinitions = swaggerSecurityDefinitionsObject{}
 	newSecDefValue := swaggerSecuritySchemeObject{}
 	newSecDefValue.Name = "Authorization"
@@ -241,6 +256,7 @@ func renderServiceRoutes(service spec.Service, groups []spec.Group, paths swagge
 							Required: true,
 							Schema:   &schema,
 						}
+
 						doc := strings.Join(route.RequestType.Documents(), ",")
 						doc = strings.Replace(doc, "//", "", -1)
 
@@ -302,6 +318,15 @@ func renderServiceRoutes(service spec.Service, groups []spec.Group, paths swagge
 						},
 					},
 				},
+			}
+
+			if defineStruct, ok := route.RequestType.(spec.DefineStruct); ok {
+				for _, member := range defineStruct.Members {
+					if strings.Contains(member.Tag, "form") {
+						operationObject.Consumes = []string{"multipart/form-data"}
+						break
+					}
+				}
 			}
 
 			for _, v := range route.Doc {
@@ -399,6 +424,10 @@ func renderStruct(member spec.Member) swaggerParameterObject {
 	sp := swaggerParameterObject{In: "query", Type: ftype, Format: format}
 
 	for _, tag := range member.Tags() {
+		if tag.Key == validateKey {
+			continue
+		}
+
 		sp.Name = tag.Name
 		if len(tag.Options) == 0 {
 			sp.Required = true
@@ -500,6 +529,9 @@ func renderReplyAsDefinition(d swaggerDefinitionsObject, m messageMap, p []spec.
 			*schema.Properties = append(*schema.Properties, kv)
 
 			for _, tag := range member.Tags() {
+				if tag.Key == validateKey {
+					continue
+				}
 				if len(tag.Options) == 0 {
 					if !contains(schema.Required, tag.Name) && tag.Name != "required" {
 						schema.Required = append(schema.Required, tag.Name)
