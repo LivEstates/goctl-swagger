@@ -160,7 +160,9 @@ func renderServiceRoutes(service spec.Service, groups []spec.Group, paths swagge
 					}
 				}
 			}
+			isUpload := true
 			if defineStruct, ok := route.RequestType.(spec.DefineStruct); ok {
+				isUpload = false
 				for _, member := range defineStruct.Members {
 					if hasHeaderParameters(member) {
 						parameters = parseHeader(member, parameters)
@@ -258,6 +260,17 @@ func renderServiceRoutes(service spec.Service, groups []spec.Group, paths swagge
 						},
 					},
 				},
+			}
+
+			if isUpload {
+				operationObject.Consumes = []string{"multipart/form-data"}
+				operationObject.Parameters = append(operationObject.Parameters, swaggerParameterObject{
+					Name:        "file",
+					In:          "formData",
+					Required:    true,
+					Type:        "file",
+					Description: "file to upload",
+				})
 			}
 
 			if defineStruct, ok := route.RequestType.(spec.DefineStruct); ok {
